@@ -179,6 +179,8 @@ public class Client{
                         byte[] data = new byte[bytesRead];
                         replyBuffer.get(data);
                         System.out.println("Server: " + new String(data));
+
+                        channel.close();
                     }
 
                     case "DOWNLOAD" -> {
@@ -223,15 +225,17 @@ public class Client{
                         FileOutputStream fos = new FileOutputStream(downloadFile);
                         ByteBuffer fileBuffer = ByteBuffer.allocate(1024);
 
+                        FileChannel fc=fos.getChannel();
                         while (channel.read(fileBuffer) > 0) {
                             fileBuffer.flip();
-                            while (fileBuffer.hasRemaining()) {
-                                fos.write(fileBuffer.get());
-                            }
+
+                                fc.write(fileBuffer);
+
                             fileBuffer.clear();
                         }
 
                         fos.close();
+                        channel.close();
                         System.out.println("Download complete: " + downloadFile.getPath());
                     }
 
@@ -243,6 +247,7 @@ public class Client{
         }
     }
 }
+
 
 
 
