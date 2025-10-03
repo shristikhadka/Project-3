@@ -1,224 +1,128 @@
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 
 public class Server {
     public static void main(String[] args) throws Exception {
-        if (args.length != 1) {
-            System.out.println("Usage: java Server <port>");
-            return;
-        }
-
-        int port = Integer.parseInt(args[0]);
-
-        // Create ServerFiles directory if it doesn't exist
-        File serverDir = new File("ServerFiles");
-        if (!serverDir.exists()) {
-            serverDir.mkdir();
-        }
+        int port = 3000;
 
         // server socket channel/ bind to port
         ServerSocketChannel serverSocket = ServerSocketChannel.open();
         serverSocket.bind(new InetSocketAddress(port));
-        System.out.println("Server started on port " + port);
+
+        File sharedDir = new File("ServerFiles");
+        if (!sharedDir.exists()) {
+            sharedDir.mkdir();
+        }
+
 
         while (true) {
             try (SocketChannel clientChannel = serverSocket.accept()) {
-                System.out.println("Client connected.");
+                ByteBuffer buffer = ByteBuffer.allocate(4096);
+                int bytesRead = clientChannel.read(buffer);
+                if (bytesRead == -1) continue;
 
-                // Read command character (2 bytes for char)
-                ByteBuffer commandBuffer = ByteBuffer.allocate(2);
-                int bytesRead = clientChannel.read(commandBuffer);
+                buffer.flip();
+                byte[] data = new byte[bytesRead];
+                buffer.get(data);
+                String input = new String(data);
 
-                if (bytesRead < 2) {
-                    System.out.println("Client disconnected without sending command.");
-                    continue;
-                }
+                // split command
+                String[] parts = input.split(" ", 2);
+                String cmd = parts[0].toUpperCase();
 
-                commandBuffer.flip();
-                char command = commandBuffer.getChar();
+                System.out.println("Client command: " + input);
 
-                System.out.println("Received command: " + command);
-
-                switch (command) {
-                    case 'L' -> { // LIST
-                        File dir = new File("ServerFiles");
-                        String[] files = dir.list();
-                        String reply = (files != null && files.length > 0)
-                                ? String.join("\n", files)
-                                : "No files found.";
-                        clientChannel.write(ByteBuffer.wrap(reply.getBytes()));
-                        System.out.println("Sent file list.");
-                    }
-
-                    case 'D' -> { // DELETE
-                        // Read filename length
-                        ByteBuffer lengthBuffer = ByteBuffer.allocate(4);
-                        clientChannel.read(lengthBuffer);
-                        lengthBuffer.flip();
-                        int fileNameLength = lengthBuffer.getInt();
-
-                        // Read filename
-                        ByteBuffer nameBuffer = ByteBuffer.allocate(fileNameLength);
-                        clientChannel.read(nameBuffer);
-                        nameBuffer.flip();
-                        byte[] nameBytes = new byte[fileNameLength];
-                        nameBuffer.get(nameBytes);
-                        String fileName = new String(nameBytes);
-
-                        // Delete file
-                        File file = new File("ServerFiles", fileName);
-                        String reply = (file.exists() && file.delete())
-                                ? "SUCCESS: File deleted."
-                                : "FAILURE: File not found.";
-                        clientChannel.write(ByteBuffer.wrap(reply.getBytes()));
-                        System.out.println("DELETE " + fileName + ": " + reply);
-                    }
-
-                    case 'R' -> { // RENAME
-                        // Read old filename length
-                        ByteBuffer lengthBuffer = ByteBuffer.allocate(4);
-                        clientChannel.read(lengthBuffer);
-                        lengthBuffer.flip();
-                        int oldNameLength = lengthBuffer.getInt();
-
-                        // Read old filename
-                        ByteBuffer oldNameBuffer = ByteBuffer.allocate(oldNameLength);
-                        clientChannel.read(oldNameBuffer);
-                        oldNameBuffer.flip();
-                        byte[] oldNameBytes = new byte[oldNameLength];
-                        oldNameBuffer.get(oldNameBytes);
-                        String oldName = new String(oldNameBytes);
-
-                        // Read new filename length
-                        lengthBuffer.clear();
-                        clientChannel.read(lengthBuffer);
-                        lengthBuffer.flip();
-                        int newNameLength = lengthBuffer.getInt();
-
-                        // Read new filename
-                        ByteBuffer newNameBuffer = ByteBuffer.allocate(newNameLength);
-                        clientChannel.read(newNameBuffer);
-                        newNameBuffer.flip();
-                        byte[] newNameBytes = new byte[newNameLength];
-                        newNameBuffer.get(newNameBytes);
-                        String newName = new String(newNameBytes);
-
-                        // Rename file
-                        File oldFile = new File("ServerFiles", oldName);
-                        File newFile = new File("ServerFiles", newName);
-                        String reply = (oldFile.exists() && oldFile.renameTo(newFile))
-                                ? "SUCCESS: File renamed."
-                                : "FAILURE: Rename failed.";
-                        clientChannel.write(ByteBuffer.wrap(reply.getBytes()));
-                        System.out.println("RENAME " + oldName + " to " + newName + ": " + reply);
-                    }
-
-                    case 'U' -> { // UPLOAD
-                        // Read filename length
-                        ByteBuffer lengthBuffer = ByteBuffer.allocate(4);
-                        clientChannel.read(lengthBuffer);
-                        lengthBuffer.flip();
-                        int fileNameLength = lengthBuffer.getInt();
-
-                        // Read filename
-                        System.out.println(fileNameLength);
-                        ByteBuffer nameBuffer = ByteBuffer.allocate(fileNameLength);
-                        clientChannel.read(nameBuffer);
-                        nameBuffer.flip();
-                        byte[] nameBytes = new byte[fileNameLength];
-                        nameBuffer.get(nameBytes);
-                        String fileName = new String(nameBytes);
-                        System.out.println(fileName);
-
-
-                        // Receive file content and save to ServerFiles directory
-                        File uploadedFile = new File("ServerFiles", fileName);
-                        FileOutputStream fos = new FileOutputStream(uploadedFile);
-                        FileChannel fc = fos.getChannel();
-                        ByteBuffer contentBuffer = ByteBuffer.allocate(1024);
-
-                        int uploadBytesRead;
-                        while ((uploadBytesRead = clientChannel.read(contentBuffer)) != -1) {
-                            contentBuffer.flip();
-                            fc.write(contentBuffer);
-
-                            contentBuffer.clear();
+                switch (cmd) {
+                    case "LIST" -> {
+                        sharedDir = new File("ServerFiles");
+                        if (!sharedDir.exists()) {
+                            sharedDir.mkdir();
                         }
 
-                        fos.close();
-
-                        // Send success response
-                        String reply = "SUCCESS: File uploaded.";
+                        String[] files = sharedDir.list();
+                        String reply = (files != null) ? String.join("\n", files) : "No files found.";
                         clientChannel.write(ByteBuffer.wrap(reply.getBytes()));
-                        System.out.println("UPLOAD " + fileName + ": " + reply);
-
-                        clientChannel.close();
                     }
 
-                    case 'W' -> { // DOWNLOAD
-                        // Read filename length
-                        ByteBuffer lengthBuffer = ByteBuffer.allocate(4);
-                        clientChannel.read(lengthBuffer);
-                        lengthBuffer.flip();
-                        int fileNameLength = lengthBuffer.getInt();
-
-                        // Read filename
-                        ByteBuffer nameBuffer = ByteBuffer.allocate(fileNameLength);
-                        clientChannel.read(nameBuffer);
-                        nameBuffer.flip();
-                        byte[] nameBytes = new byte[fileNameLength];
-                        nameBuffer.get(nameBytes);
-                        String fileName = new String(nameBytes);
-
-                        // Check if file exists
-                        File downloadFile = new File("ServerFiles", fileName);
-                        if (!downloadFile.exists()) {
-                            // Send failure status
-                            ByteBuffer statusBuffer = ByteBuffer.allocate(1);
-                            statusBuffer.put((byte) 'F');
-                            statusBuffer.flip();
-                            clientChannel.write(statusBuffer);
-                            System.out.println("DOWNLOAD " + fileName + ": File not found.");
+                    case "DELETE" -> {
+                        if (parts.length < 2) break;
+                        File file = new File(parts[1]);
+                        String reply;
+                        if (file.exists() && file.delete()) {
+                            reply = "File deleted.";
                         } else {
-                            ByteBuffer statusBuffer = ByteBuffer.allocate(1);
-                            statusBuffer.put((byte) 'S');
-                            statusBuffer.flip();
-                            clientChannel.write(statusBuffer);
-
-                            // Send file content
-                            FileInputStream fis = new FileInputStream(downloadFile);
-                            ByteBuffer contentBuffer = ByteBuffer.allocate(1024);
-                            byte[] chunk = new byte[1024];
-                            int downloadBytesRead;
-
-                            while ((downloadBytesRead = fis.read(chunk)) > 0) {
-                                contentBuffer.clear();
-                                contentBuffer.put(chunk, 0, downloadBytesRead);
-                                contentBuffer.flip();
-                                clientChannel.write(contentBuffer);
-                            }
-
-                            fis.close();
-                            clientChannel.close();
-                            System.out.println("DOWNLOAD " + fileName + ": File sent.");
+                            reply = "File not found.";
                         }
+                        clientChannel.write(ByteBuffer.wrap(reply.getBytes()));
+                    }
+
+
+                    case "RENAME" -> {
+                        if (parts.length < 2) break;
+                        String[] argsSplit = parts[1].split(" ");
+                        String reply = "Invalid arguments.";
+                        if (argsSplit.length == 2) {
+                            File oldFile = new File(argsSplit[0]);
+                            File newFile = new File(argsSplit[1]);
+                            if (oldFile.exists() && oldFile.renameTo(newFile)) {
+                                reply = "File renamed.";
+                            } else {
+                                reply = "Rename failed.";
+                            }
+                        }
+                        clientChannel.write(ByteBuffer.wrap(reply.getBytes()));
+                    }
+
+                    case "UPLOAD" -> {
+                        if (parts.length < 2) break;
+                        File file = new File(sharedDir, parts[1]);
+
+                        try (FileOutputStream fos = new FileOutputStream(file)) {
+                            ByteBuffer fileBuffer = ByteBuffer.allocate(4096);
+                            int bytes;
+                            while ((bytes = clientChannel.read(fileBuffer)) > 0) {
+                                fileBuffer.flip();
+                                byte[] chunk = new byte[bytes];
+                                fileBuffer.get(chunk);
+                                fileBuffer.clear();
+                            }
+                            clientChannel.write(ByteBuffer.wrap("Upload complete.".getBytes()));
+                        } catch (Exception e) {
+                            clientChannel.write(ByteBuffer.wrap(("Upload failed: " + e.getMessage()).getBytes()));
+                        }
+                    }
+
+                    case "DOWNLOAD" -> {
+                        if (parts.length < 2) break;
+                        File file = new File(sharedDir, parts[1]);
+                        if (!file.exists()) {
+                            clientChannel.write(ByteBuffer.wrap("File not found.".getBytes()));
+                            break;
+                        }
+
+                        try (FileInputStream fis = new FileInputStream(file)) {
+                            byte[] buf = new byte[4096];
+                            int count;
+                            while ((count = fis.read(buf)) != -1) {
+                                clientChannel.write(ByteBuffer.wrap(buf, 0, count));
+                            }
+                        }
+                    }
+
+                    case "QUIT" -> {
+                        System.out.println("Server quit.");
                     }
 
                     default -> {
-                        String reply = "ERROR: Invalid command.";
+                        String reply = "Invalid command.";
                         clientChannel.write(ByteBuffer.wrap(reply.getBytes()));
-                        System.out.println("Invalid command received: " + command);
                     }
                 }
-            } catch (Exception e) {
-                System.out.println("Error handling client: " + e.getMessage());
-                e.printStackTrace();
             }
         }
     }
