@@ -1,5 +1,6 @@
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.io.File;
@@ -49,8 +50,8 @@ public class Server {
                         File dir = new File("ServerFiles");
                         String[] files = dir.list();
                         String reply = (files != null && files.length > 0)
-                            ? String.join("\n", files)
-                            : "No files found.";
+                                ? String.join("\n", files)
+                                : "No files found.";
                         clientChannel.write(ByteBuffer.wrap(reply.getBytes()));
                         System.out.println("Sent file list.");
                     }
@@ -73,8 +74,8 @@ public class Server {
                         // Delete file
                         File file = new File("ServerFiles", fileName);
                         String reply = (file.exists() && file.delete())
-                            ? "SUCCESS: File deleted."
-                            : "FAILURE: File not found.";
+                                ? "SUCCESS: File deleted."
+                                : "FAILURE: File not found.";
                         clientChannel.write(ByteBuffer.wrap(reply.getBytes()));
                         System.out.println("DELETE " + fileName + ": " + reply);
                     }
@@ -112,8 +113,8 @@ public class Server {
                         File oldFile = new File("ServerFiles", oldName);
                         File newFile = new File("ServerFiles", newName);
                         String reply = (oldFile.exists() && oldFile.renameTo(newFile))
-                            ? "SUCCESS: File renamed."
-                            : "FAILURE: Rename failed.";
+                                ? "SUCCESS: File renamed."
+                                : "FAILURE: Rename failed.";
                         clientChannel.write(ByteBuffer.wrap(reply.getBytes()));
                         System.out.println("RENAME " + oldName + " to " + newName + ": " + reply);
                     }
@@ -126,24 +127,27 @@ public class Server {
                         int fileNameLength = lengthBuffer.getInt();
 
                         // Read filename
+                        System.out.println(fileNameLength);
                         ByteBuffer nameBuffer = ByteBuffer.allocate(fileNameLength);
                         clientChannel.read(nameBuffer);
                         nameBuffer.flip();
                         byte[] nameBytes = new byte[fileNameLength];
                         nameBuffer.get(nameBytes);
                         String fileName = new String(nameBytes);
+                        System.out.println(fileName);
+
 
                         // Receive file content and save to ServerFiles directory
                         File uploadedFile = new File("ServerFiles", fileName);
                         FileOutputStream fos = new FileOutputStream(uploadedFile);
+                        FileChannel fc = fos.getChannel();
                         ByteBuffer contentBuffer = ByteBuffer.allocate(1024);
 
                         int uploadBytesRead;
-                        while ((uploadBytesRead = clientChannel.read(contentBuffer)) > 0) {
+                        while ((uploadBytesRead = clientChannel.read(contentBuffer)) != -1) {
                             contentBuffer.flip();
-                            while (contentBuffer.hasRemaining()) {
-                                fos.write(contentBuffer.get());
-                            }
+                            fc.write(contentBuffer);
+
                             contentBuffer.clear();
                         }
 
@@ -153,6 +157,8 @@ public class Server {
                         String reply = "SUCCESS: File uploaded.";
                         clientChannel.write(ByteBuffer.wrap(reply.getBytes()));
                         System.out.println("UPLOAD " + fileName + ": " + reply);
+
+                        clientChannel.close();
                     }
 
                     case 'W' -> { // DOWNLOAD
@@ -180,7 +186,6 @@ public class Server {
                             clientChannel.write(statusBuffer);
                             System.out.println("DOWNLOAD " + fileName + ": File not found.");
                         } else {
-                            // Send success status
                             ByteBuffer statusBuffer = ByteBuffer.allocate(1);
                             statusBuffer.put((byte) 'S');
                             statusBuffer.flip();
@@ -200,6 +205,7 @@ public class Server {
                             }
 
                             fis.close();
+                            clientChannel.close();
                             System.out.println("DOWNLOAD " + fileName + ": File sent.");
                         }
                     }
@@ -217,4 +223,3 @@ public class Server {
         }
     }
 }
-
