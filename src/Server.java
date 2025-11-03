@@ -16,8 +16,6 @@ public class Server {
             return;
         }
 
-
-
         int port = Integer.parseInt(args[0]);
 
         // Create ServerFiles directory if it doesn't exist
@@ -30,10 +28,21 @@ public class Server {
         ServerSocketChannel serverSocket = ServerSocketChannel.open();
         serverSocket.bind(new InetSocketAddress(port));
         System.out.println("Server started on port " + port);
-        ExecutorService es = Executors.newFixedThreadPool(4);
 
-        es.close();
+        //create the executor(i.e a thread pool)
+        ExecutorService es= Executors.newFixedThreadPool(4);
+        while (true) {
+            try {
+                SocketChannel clientChannel = serverSocket.accept();
+                System.out.println("Client connected.");
 
+                //submit task to the executor
+                es.submit(new ClientHandler(clientChannel));
 
+            } catch (Exception e) {
+                System.out.println("Error handling client: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
     }
 }
